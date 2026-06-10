@@ -23,9 +23,12 @@ import sys
 from typing import Optional
 
 import pandas as pd
-from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv 미설치 시 환경변수를 os.environ에서 직접 읽음
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -118,7 +121,7 @@ def _query_t2(pkg_code: str) -> pd.DataFrame:
         if col not in df.columns:
             continue
         df[col] = df.groupby("pkg_code")[col].transform(
-            lambda x: x.fillna(method="ffill").fillna(method="bfill")
+            lambda x: x.ffill().bfill()
         )
 
     df = df.drop_duplicates()
