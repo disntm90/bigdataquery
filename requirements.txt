@@ -1,3 +1,2 @@
 bigdataquery
 pandas
-python-dotenv
