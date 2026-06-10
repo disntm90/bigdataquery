@@ -9,71 +9,26 @@ pkg_query.py — Package 정보 조회 (bigdataquery)
     T2: MOS_TSP_SMI.GPM_TP_BE_MES_ASSY_TOTAL        — 어셈블리 정보 (null 자동 보완)
     T3: MOS_TSP_SMI.GPM_TP_BE_MES_PKG_QC_INSPECTION — QC 치수 정보
     T4: MOS_TSP_SMI.GPM_TP_BE_MAT_MATS_USED         — 트레이 정보
-
-환경변수 (.env):
-    BDQ_USER=your_ssoid
-    BDQ_PASS=your_ad_password
 """
 
 import argparse
-import io
 import logging
-import os
 import sys
 from typing import Optional
 
+import bigdataquery as bdq
 import pandas as pd
-
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass  # python-dotenv 미설치 시 환경변수를 os.environ에서 직접 읽음
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 
-# ── bigdataquery 로그인 ──────────────────────────────────────────
-
-def _bdq_login() -> bool:
-    try:
-        import bigdataquery as bdq
-    except ImportError:
-        logger.error("bigdataquery 패키지가 설치되어 있지 않습니다.")
-        return False
-
-    user = os.getenv("BDQ_USER", "")
-    pw   = os.getenv("BDQ_PASS", "")
-
-    if not user or not pw:
-        logger.error("BDQ_USER 또는 BDQ_PASS 환경변수가 설정되지 않았습니다. .env 파일을 확인하세요.")
-        return False
-
-    account_info = io.StringIO(f"{user}\n{pw}")
-    try:
-        sys.stdin = account_info
-        bdq.login()
-        logger.info(f"bigdataquery 로그인 성공 (user: {user})")
-        return True
-    except Exception as exc:
-        logger.error(f"bigdataquery 로그인 실패: {exc}")
-        return False
-    finally:
-        account_info.close()
-        sys.stdin = io.StringIO("")
-
+# ── 데이터 조회 ──────────────────────────────────────────────────
 
 def _get_data(sql: str) -> Optional[pd.DataFrame]:
-    try:
-        import bigdataquery as bdq
-    except ImportError:
-        return None
-
-    user = os.getenv("BDQ_USER", "")
     logger.debug(f"getData 호출:\n{sql.strip()}")
     try:
-        df = bdq.getData(param=sql, user_name=user)
+        df = bdq.getData(param=sql)
         return df
     except Exception as exc:
         logger.error(f"getData 실패: {exc}")
@@ -115,7 +70,6 @@ def _query_t2(pkg_code: str) -> pd.DataFrame:
 
     logger.info(f"T2: {len(df)}행 조회 (null 채우기 전)")
 
-    # pkg_code 그룹 내에서 각 컬럼의 첫 번째 non-null 값으로 null을 채움
     fill_cols = ["AO_PROD_CODE", "tray_code", "pkg_diagram", "mk_diagram", "lf_diagram"]
     for col in fill_cols:
         if col not in df.columns:
@@ -200,9 +154,6 @@ def query_package(pkg_code: str) -> dict:
         }
     """
     logger.info(f"=== pkg_code='{pkg_code.upper()}' 조회 시작 ===")
-
-    if not _bdq_login():
-        raise RuntimeError("bigdataquery 로그인 실패. BDQ_USER/BDQ_PASS를 확인하세요.")
 
     t1 = _query_t1(pkg_code)
     t2 = _query_t2(pkg_code)
