@@ -84,21 +84,25 @@ def _query_t2(pkg_code: str) -> pd.DataFrame:
 
 
 def _query_t3(pkg_code: str) -> pd.DataFrame:
-    """T3: QC 치수 정보 (파생 컬럼: component_height, body_thickness 포함)"""
+    """
+    T3: QC 치수 정보
+    SQL 산술 연산 없이 원본 컬럼을 가져온 뒤 Python에서 파생 컬럼을 계산한다.
+    SQL에서 +/- 연산 시 NULL 포함 컬럼이 있으면 bigdataquery가 빈 결과를 반환하는 문제 방지.
+    """
     sql = f"""
         SELECT
             pkg_code,
-            pkg_hgt_std_vals + package_height_tolerence  AS component_height,
-            pkg_hgt_std_vals - solder_ball_height        AS body_thickness,
+            pkg_hgt_std_vals,
+            package_height_tolerence,
+            solder_ball_height,
             coplanarity,
             solder_ball_size,
-            solder_ball_size_post_reflow                 AS ball_width_post_reflow,
-            solder_ball_height                           AS ball_height,
+            solder_ball_size_post_reflow,
             solder_ball_height_tolerence
         FROM MOS_TSP_SMI.GPM_TP_BE_MES_PKG_QC_INSPECTION
         WHERE UPPER(pkg_code) = UPPER('{pkg_code}')
     """
-    cols = [
+    out_cols = [
         "pkg_code", "component_height", "body_thickness", "coplanarity",
         "solder_ball_size", "ball_width_post_reflow", "ball_height",
         "solder_ball_height_tolerence",
@@ -106,9 +110,20 @@ def _query_t3(pkg_code: str) -> pd.DataFrame:
     df = _get_data(sql)
     if df is None or df.empty:
         logger.warning(f"T3: pkg_code='{pkg_code}' 데이터 없음")
-        return pd.DataFrame(columns=cols)
+        return pd.DataFrame(columns=out_cols)
+
     logger.info(f"T3: {len(df)}행 조회")
-    return df
+
+    # 숫자형으로 변환 후 파생 컬럼 계산 (NULL → NaN 처리)
+    for col in ["pkg_hgt_std_vals", "package_height_tolerence", "solder_ball_height"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df["component_height"]      = df["pkg_hgt_std_vals"] + df["package_height_tolerence"]
+    df["body_thickness"]        = df["pkg_hgt_std_vals"] - df["solder_ball_height"]
+    df["ball_width_post_reflow"] = df["solder_ball_size_post_reflow"]
+    df["ball_height"]           = df["solder_ball_height"]
+
+    return df[out_cols]
 
 
 def _query_t4(tray_codes: list) -> pd.DataFrame:
