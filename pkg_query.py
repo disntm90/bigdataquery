@@ -55,7 +55,7 @@ def _query_t1(pkg_code: str) -> pd.DataFrame:
 def _query_t2(pkg_code: str) -> pd.DataFrame:
     """
     T2: 어셈블리 정보
-    동일 pkg_code 내 행 간 누락값을 다른 행으로 채워서 반환한다.
+    여러 행에서 컬럼별 첫 번째 non-null 값을 추출해 1행으로 반환한다.
     """
     sql = f"""
         SELECT pkg_code, AO_PROD_CODE, tray_code, pkg_diagram, mk_diagram, lf_diagram
@@ -68,19 +68,12 @@ def _query_t2(pkg_code: str) -> pd.DataFrame:
         logger.warning(f"T2: pkg_code='{pkg_code}' 데이터 없음")
         return pd.DataFrame(columns=cols)
 
-    logger.info(f"T2: {len(df)}행 조회 (null 채우기 전)")
+    logger.info(f"T2: {len(df)}행 조회")
 
-    fill_cols = ["AO_PROD_CODE", "tray_code", "pkg_diagram", "mk_diagram", "lf_diagram"]
-    for col in fill_cols:
-        if col not in df.columns:
-            continue
-        df[col] = df.groupby("pkg_code")[col].transform(
-            lambda x: x.ffill().bfill()
-        )
-
-    df = df.drop_duplicates()
-    logger.info(f"T2: null 채우기 후 {len(df)}행")
-    return df
+    # pkg_code별로 각 컬럼의 첫 번째 non-null 값 1행으로 집약
+    result = df.groupby("pkg_code", as_index=False).first()
+    logger.info(f"T2: 집약 후 {len(result)}행")
+    return result[cols]
 
 
 def _query_t3(pkg_code: str) -> pd.DataFrame:
@@ -118,10 +111,10 @@ def _query_t3(pkg_code: str) -> pd.DataFrame:
     for col in ["pkg_hgt_std_vals", "package_height_tolerence", "solder_ball_height"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    df["component_height"]      = df["pkg_hgt_std_vals"] + df["package_height_tolerence"]
-    df["body_thickness"]        = df["pkg_hgt_std_vals"] - df["solder_ball_height"]
+    df["component_height"]       = df["pkg_hgt_std_vals"] + df["package_height_tolerence"]
+    df["body_thickness"]         = df["pkg_hgt_std_vals"] - df["solder_ball_height"]
     df["ball_width_post_reflow"] = df["solder_ball_size_post_reflow"]
-    df["ball_height"]           = df["solder_ball_height"]
+    df["ball_height"]            = df["solder_ball_height"]
 
     return df[out_cols]
 
@@ -163,7 +156,7 @@ def query_package(pkg_code: str) -> dict:
     반환값:
         {
             "pkg_info":  DataFrame — T1 패키지 기본 정보
-            "assy_info": DataFrame — T2 어셈블리 정보 (null 보완됨)
+            "assy_info": DataFrame — T2 어셈블리 정보 (1행)
             "qc_info":   DataFrame — T3 QC 치수 정보
             "tray_info": DataFrame — T4 트레이 정보
         }
