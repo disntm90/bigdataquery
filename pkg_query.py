@@ -37,6 +37,14 @@ def _get_data(sql: str) -> Optional[pd.DataFrame]:
         return None
 
 
+def _to_numeric(series: pd.Series) -> pd.Series:
+    """문자가 섞인 값에서 숫자 부분만 추출 후 float 변환. 예) '짺0.09' → 0.09"""
+    return pd.to_numeric(
+        series.astype(str).str.extract(r'(-?\d+\.?\d*)', expand=False),
+        errors="coerce",
+    )
+
+
 # ── 각 테이블 조회 ───────────────────────────────────────────────
 
 def _query_t1(pkg_code: str) -> pd.DataFrame:
@@ -83,6 +91,7 @@ def _query_t3(pkg_code: str) -> pd.DataFrame:
     """
     T3: QC 치수 정보
     SQL 산술 연산 없이 원본 컬럼을 가져온 뒤 Python에서 파생 컬럼을 계산한다.
+    숫자+문자 혼합 값(예: '짺0.09')은 숫자 부분만 추출해 계산한다.
     """
     sql = f"""
         SELECT
@@ -109,8 +118,9 @@ def _query_t3(pkg_code: str) -> pd.DataFrame:
 
     logger.info(f"T3: {len(df)}행 조회")
 
+    # 문자 혼합 가능성이 있는 컬럼 모두 숫자 추출 후 변환
     for col in ["pkg_hgt_std_vals", "package_height_tolerence", "solder_ball_height"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+        df[col] = _to_numeric(df[col])
 
     df["component_height"]       = df["pkg_hgt_std_vals"] + df["package_height_tolerence"]
     df["body_thickness"]         = df["pkg_hgt_std_vals"] - df["solder_ball_height"]
