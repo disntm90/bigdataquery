@@ -29,6 +29,8 @@ def _get_data(sql: str) -> Optional[pd.DataFrame]:
     logger.debug(f"getData 호출:\n{sql.strip()}")
     try:
         df = bdq.getData(param=sql)
+        # bigdataquery는 컬럼명을 소문자로 반환하므로 일관되게 소문자로 통일
+        df.columns = df.columns.str.lower()
         return df
     except Exception as exc:
         logger.error(f"getData 실패: {exc}")
@@ -44,12 +46,13 @@ def _query_t1(pkg_code: str) -> pd.DataFrame:
         FROM MOS_TSP_SMI.GPM_TP_BE_MES_PKG
         WHERE UPPER(pkg_code) = UPPER('{pkg_code}')
     """
+    cols = ["pkg_code", "pkg_name", "remark", "pkg_gubun", "pin"]
     df = _get_data(sql)
     if df is None or df.empty:
         logger.warning(f"T1: pkg_code='{pkg_code}' 데이터 없음")
-        return pd.DataFrame(columns=["pkg_code", "pkg_name", "remark", "pkg_gubun", "pin"])
+        return pd.DataFrame(columns=cols)
     logger.info(f"T1: {len(df)}행 조회")
-    return df
+    return df[cols]
 
 
 def _query_t2(pkg_code: str) -> pd.DataFrame:
@@ -62,7 +65,7 @@ def _query_t2(pkg_code: str) -> pd.DataFrame:
         FROM MOS_TSP_SMI.GPM_TP_BE_MES_ASSY_TOTAL
         WHERE UPPER(pkg_code) = UPPER('{pkg_code}')
     """
-    cols = ["pkg_code", "AO_PROD_CODE", "tray_code", "pkg_diagram", "mk_diagram", "lf_diagram"]
+    cols = ["pkg_code", "ao_prod_code", "tray_code", "pkg_diagram", "mk_diagram", "lf_diagram"]
     df = _get_data(sql)
     if df is None or df.empty:
         logger.warning(f"T2: pkg_code='{pkg_code}' 데이터 없음")
@@ -80,7 +83,6 @@ def _query_t3(pkg_code: str) -> pd.DataFrame:
     """
     T3: QC 치수 정보
     SQL 산술 연산 없이 원본 컬럼을 가져온 뒤 Python에서 파생 컬럼을 계산한다.
-    SQL에서 +/- 연산 시 NULL 포함 컬럼이 있으면 bigdataquery가 빈 결과를 반환하는 문제 방지.
     """
     sql = f"""
         SELECT
@@ -107,7 +109,6 @@ def _query_t3(pkg_code: str) -> pd.DataFrame:
 
     logger.info(f"T3: {len(df)}행 조회")
 
-    # 숫자형으로 변환 후 파생 컬럼 계산 (NULL → NaN 처리)
     for col in ["pkg_hgt_std_vals", "package_height_tolerence", "solder_ball_height"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
@@ -121,7 +122,7 @@ def _query_t3(pkg_code: str) -> pd.DataFrame:
 
 def _query_t4(tray_codes: list) -> pd.DataFrame:
     """T4: 트레이 정보 — T2에서 추출한 tray_code 목록으로 조회"""
-    cols = ["tray_code", "tray_diagram", "N1", "N2", "X", "Y", "DX", "DY"]
+    cols = ["tray_code", "tray_diagram", "n1", "n2", "x", "y", "dx", "dy"]
     if not tray_codes:
         return pd.DataFrame(columns=cols)
 
@@ -144,7 +145,7 @@ def _query_t4(tray_codes: list) -> pd.DataFrame:
         logger.warning(f"T4: tray_codes={tray_codes} 데이터 없음")
         return pd.DataFrame(columns=cols)
     logger.info(f"T4: {len(df)}행 조회")
-    return df
+    return df[cols]
 
 
 # ── 메인 조회 함수 ───────────────────────────────────────────────
